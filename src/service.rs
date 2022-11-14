@@ -224,7 +224,7 @@ pub struct Service {
     /// If this Discv5 instance is configured to allow peers behind symmetric NATs
     /// (peers that requests will be sent to but that will not be included in NODES
     /// responses to other peers) then connection dependent port mapping is stored.
-    symmetric_nat_peers_ports: Option<HashMap<u64, HashMap<NodeId, u16>>>,
+    symmetric_nat_peers_ports: HashMap<NodeId, u16>,
 
     /// A relay is stored for a peer added to the query so that incase it times out we can attempt
     /// to contact it via the NAT traversal protocol if supported.
@@ -325,12 +325,6 @@ impl Service {
         let (discv5_send, discv5_recv) = mpsc::channel(30);
         let (exit_send, exit) = oneshot::channel();
 
-        let symmetric_nat_peers_ports = config
-            .nat_symmetric_limit
-            .map(|v| v > 0)
-            .unwrap_or(false)
-            .then(HashMap::default);
-
         config
             .executor
             .clone()
@@ -355,7 +349,7 @@ impl Service {
                     config: config.clone(),
                     query_peer_relays: Default::default(),
                     receiver_enrs: Default::default(),
-                    symmetric_nat_peers_ports,
+                    symmetric_nat_peers_ports: HashMap::new(),
                     relayed_requests: Default::default(),
                 };
 
@@ -1655,7 +1649,7 @@ impl Service {
                 // If a discovered node flags that it is behind an asymmetric NAT, send it a relay
                 // request directly instead of adding it to a query (avoid waiting for a request to
                 // the new peer to timeout).
-                if self.config.ip_mode.get_contactable_addr_nat(enr).is_some() {
+                if self.config.ip_mode.is_contactable_nat()
                     let key = kbucket::Key::from(enr.node_id());
                     let mut new_nat_peer = false;
                     match self.kbuckets.write().entry(&key) {
@@ -1860,7 +1854,7 @@ impl Service {
         connection_direction: ConnectionDirection,
     ) {
         // Ignore sessions with non-contactable ENRs
-        if self.config.ip_mode.get_contactable_addr_nat(&enr).is_none() {
+        if !self.config.ip_mode.is_contactable_nat(&enr) {
             return;
         }
 
@@ -1875,16 +1869,20 @@ impl Service {
     fn inject_session_established_nat_symmetric(&mut self, enr: Enr, port: u16) {
         // Attempt adding the enr to the local routing table if this Discv5 instances stores
         // remote ports for connections from nodes behind a symmetric NAT.
-        if let Some(ref mut symmetric_nat_peers_ports) = self.symmetric_nat_peers_ports {
-            // Ignore sessions with non-contactable ENRs
-            if self
-                .config
-                .ip_mode
-                .get_contactable_addr_nat_symmetric(&enr, port)
-                .is_none()
-            {
-                return;
-            }
+        if self.config.nat_symmetric_limit.map(|v| v == 0) {
+            // Symmetric NAT peers are not allowed in the routing table.
+            return;
+        }
+
+        // Ignore sessions with non-contactable ENRs
+        if self
+            .config
+            .ip_mode
+            .get_contactable_addr_nat_symmetric(&enr, port)
+            .is_none()
+        {
+            return;
+        }
 
             // In case this is a node behind a symmetric NAT we need to store the port which
             // is unique for this connection and hence will not eventually be advertised in

@@ -65,39 +65,56 @@ impl IpMode {
         }
     }
 
-    /// Get the contactable Socket address of an Enr under current configuration.
-    pub fn get_contactable_addr_nat(&self, enr: &Enr) -> Option<SocketAddr> {
+    /// Returns whether the ENR is contactable if NAT hole-punching is supported. This returns
+    /// false for nodes are are behind a symmetric NAT.
+    pub fn is_contactable_nat(&self, enr: &Enr, include_symmetric: bool) -> bool {
         match self {
-            IpMode::Ip4 => enr.udp4_socket_nat().map(SocketAddr::V4),
+            IpMode::Ip4 => enr.udp4_socket_nat().is_some() || (include_symmetric && enr.nat4()),
             IpMode::Ip6 {
                 enable_mapped_addresses,
             } => {
-                // NOTE: general consensus is that ipv6 addresses should be preferred.
-                let maybe_ipv6_addr = enr.udp6_socket_nat().and_then(|nat6| {
+                if let Some(ip) = enr.nat6() {
                     // NOTE: There is nothing in the spec preventing compat/mapped addresses from being
                     // transmitted in the ENR. Here we choose to enforce canonical addresses since
                     // it implies the logic of matching socket_addr verification. For this we prevent
                     // communications with Ipv4 addresses advertized in the Ipv6 field.
-                    if to_ipv4_mapped(nat6.ip()).is_some() {
-                        None
+
+                    if to_ipv4_mapped(ip).is_some() {
+                        // If mapped addresses are enabled we can use the Ipv4 address of the node in
+                        // case it doesn't have an ipv6 one
+                        if enabled_mapped_addressess && enr.nat4().is_some() {
+                            // There is a valid IPv4 address
+                            return include_symmetric  || enr.udp4().is_some();
+                        } else {
+                            false
+                        }
                     } else {
-                        Some(nat6)
+                        // The IPv6 address is fine
+                        return include_symmetric || enr.nat6().is_some();
                     }
-                });
+                }
+            }
+
+                // NOTE: general consensus is that ipv6 addresses should be preferred.
+                let maybe_ipv6_addr = enr.udp6_socket_nat().and_then(|nat6| {
+                    if to_ipv4_mapped(nat6.ip()).is_some() {
+                        false
+                    } else {
+                        true
+                    }
+                } );
                 if *enable_mapped_addresses {
                     // If mapped addresses are enabled we can use the Ipv4 address of the node in
                     // case it doesn't have an ipv6 one
-                    maybe_ipv6_addr
-                        .map(SocketAddr::V6)
-                        .or_else(|| enr.udp4_socket_nat().map(SocketAddr::V4))
+                    maybe_ipv6_addr || enr.udp4_socket_nat().is_some()
                 } else {
-                    maybe_ipv6_addr.map(SocketAddr::V6)
+                    maybe_ipv6_addr.is_some()
                 }
             }
         }
     }
 
-    /// Get the contactable Socket address of an Enr under current configuration.
+    /// Get the contactable Socket address of an ENR under current configuration.
     pub fn get_contactable_addr(&self, enr: &Enr) -> Option<SocketAddr> {
         match self {
             IpMode::Ip4 => enr.udp4_socket().map(SocketAddr::V4),
