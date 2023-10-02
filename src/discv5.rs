@@ -57,7 +57,7 @@ pub enum Event {
     /// A node has been discovered from a FINDNODES request.
     ///
     /// The ENR of the node is returned. Various properties can be derived from the ENR.
-    /// This happen spontaneously through queries as nodes return ENR's. These ENR's are not
+    /// This happens spontaneously through queries as nodes return ENR's. These ENR's are not
     /// guaranteed to be live or contactable.
     Discovered(Enr),
     /// A new ENR was added to the routing table.
