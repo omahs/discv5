@@ -23,7 +23,7 @@ pub enum Error {
     ServiceChannelClosed,
     /// The discv5 service is not running.
     ServiceNotStarted,
-    /// The service has is already running.
+    /// The service is already running.
     ServiceAlreadyStarted,
     /// A session could not be established with the remote.
     SessionNotEstablished,
@@ -103,7 +103,7 @@ pub enum RequestError {
     InvalidEnr(&'static str),
     /// The remote's ENR is invalid.
     InvalidRemoteEnr,
-    /// The remote returned and invalid packet.
+    /// The remote returned an invalid packet.
     InvalidRemotePacket,
     /// Failed attempting to encrypt the request.
     EncryptionFailed(String),
